@@ -1,54 +1,90 @@
 /*
  * Copyright The Titan Project Contributors.
  */
-package s3web
+package ssh
 
 import (
 	"errors"
 	"fmt"
-	"github.com/titan-data/remote-sdk-go/pkg/remote"
+	"github.com/titan-data/remote-sdk-go/remote"
 	"net/url"
-	"reflect"
+	"strconv"
 	"strings"
 )
 
-type s3webRemote struct {
+type sshRemote struct {
 }
 
-func (s s3webRemote) Type() string {
-	return "s3web"
+func (s sshRemote) Type() string {
+	return "ssh"
 }
 
-func (s s3webRemote) FromURL(url url.URL, additionalProperties map[string]string) (map[string]interface{}, error) {
-	if url.Scheme != "s3web" {
+func (s sshRemote) FromURL(url *url.URL, additionalProperties map[string]string) (map[string]interface{}, error) {
+	if url.Scheme != "ssh" {
 		return nil, errors.New("invalid remote scheme")
 	}
 
-	if url.User != nil {
-		return nil, errors.New("username and password cannot be specified")
+	if url.Path == "" {
+		return nil, errors.New("missing remote path")
 	}
 
 	if url.Hostname() == "" {
-		return nil, errors.New("missing host name in remote")
+		return nil, errors.New("missing remote host")
 	}
 
-	if len(additionalProperties) != 0 {
-		return nil, errors.New(fmt.Sprintf("invalid property '%s'", reflect.ValueOf(additionalProperties).MapKeys()[0].String()))
+	if url.User == nil || url.User.Username() == "" {
+		return nil, errors.New("missing remote username")
 	}
 
-	u := fmt.Sprintf("http://%s%s", url.Host, url.Path)
-	return map[string]interface{}{"url": u}, nil
+	path := url.Path
+	if strings.Index(path, "/~/") == 0 {
+		path = path[3:]
+	}
+
+	keyFile := additionalProperties["keyFile"]
+	password, passwordSet := url.User.Password()
+	if keyFile != "" && passwordSet {
+		return nil, errors.New("both remote password and key file cannot be specified")
+	}
+
+	for k := range additionalProperties {
+		if k != "keyFile" {
+			return nil, errors.New(fmt.Sprintf("invalid rmeote property '%s'", k))
+		}
+	}
+
+	result := map[string]interface{}{
+		"username": url.User.Username(),
+		"address":  url.Hostname(),
+		"path":     path,
+	}
+
+	if password != "" {
+		result["password"] = password
+	}
+	if url.Port() != "" {
+		port, err := strconv.Atoi(url.Port())
+		if err != nil {
+			return nil, fmt.Errorf("invalid port '%s': %w", url.Port(), err)
+		}
+		result["port"] = port
+	}
+	if keyFile != "" {
+		result["keyFile"] = keyFile
+	}
+
+	return result, nil
 }
 
-func (s s3webRemote) ToURL(properties map[string]interface{}) (string, map[string]string, error) {
+func (s sshRemote) ToURL(properties map[string]interface{}) (string, map[string]string, error) {
 	u := properties["url"].(string)
 	return strings.Replace(u, "http", "s3web", 1), map[string]string{}, nil
 }
 
-func (s s3webRemote) GetParameters(remoteProperties map[string]interface{}) (map[string]interface{}, error) {
+func (s sshRemote) GetParameters(remoteProperties map[string]interface{}) (map[string]interface{}, error) {
 	return map[string]interface{}{}, nil
 }
 
 func init() {
-	remote.Register(s3webRemote{})
+	remote.Register(sshRemote{})
 }
