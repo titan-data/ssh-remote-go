@@ -109,50 +109,57 @@ func TestBadMissingHostWithUser(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
+func TestToURL(t *testing.T) {
+	r := remote.Get("ssh")
+	u, props, _ := r.ToURL(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path"})
+	assert.Equal(t, "ssh://username@host/path", u)
+	assert.Empty(t, props)
+}
+
+func TestToPassword(t *testing.T) {
+	r := remote.Get("ssh")
+	u, props, _ := r.ToURL(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path", "password": "pass"})
+	assert.Equal(t, "ssh://username:*****@host/path", u)
+	assert.Empty(t, props)
+}
+
+func TestToPort(t *testing.T) {
+	r := remote.Get("ssh")
+	u, props, _ := r.ToURL(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path", "port": 812})
+	assert.Equal(t, "ssh://username@host:812/path", u)
+	assert.Empty(t, props)
+}
+
+func TestToRelativePath(t *testing.T) {
+	r := remote.Get("ssh")
+	u, props, _ := r.ToURL(map[string]interface{}{"username": "username", "address": "host",
+		"path": "path"})
+	assert.Equal(t, "ssh://username@host/~/path", u)
+	assert.Empty(t, props)
+}
+
+func TestToKeyFile(t *testing.T) {
+	r := remote.Get("ssh")
+	u, props, _ := r.ToURL(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path", "keyFile": "keyfile"})
+	assert.Equal(t, "ssh://username@host/path", u)
+	assert.Len(t, props, 1)
+	assert.Equal(t, "keyfile", props["keyFile"])
+}
+
+func TestToPortDouble(t *testing.T) {
+	r := remote.Get("ssh")
+	u, props, _ := r.ToURL(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path", "port": 812.0})
+	assert.Equal(t, "ssh://username@host:812/path", u)
+	assert.Empty(t, props)
+}
+
+
 /*
-
-   "basic SSH remote to URI succeeds" {
-       val (uri, parameters) = client.toUri(mapOf("username" to "username", "address" to "host",
-               "path" to "/path"))
-       uri shouldBe "ssh://username@host/path"
-       parameters.size shouldBe 0
-   }
-
-   "SSH remote with password to URI succeeds" {
-       val (uri, parameters) = client.toUri(mapOf("username" to "username", "address" to "host",
-               "path" to "/path", "password" to "pass"))
-       uri shouldBe "ssh://username:*****@host/path"
-       parameters.size shouldBe 0
-   }
-
-   "SSH remote with port to URI succeeds" {
-       val (uri, parameters) = client.toUri(mapOf("username" to "username", "address" to "host",
-               "path" to "/path", "port" to 812))
-       uri shouldBe "ssh://username@host:812/path"
-       parameters.size shouldBe 0
-   }
-
-   "SSH remote with relative path to URI succeeds" {
-       val (uri, parameters) = client.toUri(mapOf("username" to "username", "address" to "host",
-               "path" to "path"))
-       uri shouldBe "ssh://username@host/~/path"
-       parameters.size shouldBe 0
-   }
-
-   "SSH remote with keyfile to URI succeeds" {
-       val (uri, parameters) = client.toUri(mapOf("username" to "username", "address" to "host",
-               "path" to "/path", "keyFile" to "keyfile"))
-       uri shouldBe "ssh://username@host/path"
-       parameters.size shouldBe 1
-       parameters["keyFile"] shouldBe "keyfile"
-   }
-
-   "SSH remote with port as double succeeds" {
-       val (uri, parameters) = client.toUri(mapOf("username" to "username", "address" to "host",
-               "path" to "/path", "port" to 812.0))
-       uri shouldBe "ssh://username@host:812/path"
-       parameters.size shouldBe 0
-   }
 
    "get basic SSH get parameters succeeds" {
        val params = client.getParameters(mapOf("username" to "username", "address" to "host",

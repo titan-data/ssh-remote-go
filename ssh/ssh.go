@@ -77,8 +77,33 @@ func (s sshRemote) FromURL(url *url.URL, additionalProperties map[string]string)
 }
 
 func (s sshRemote) ToURL(properties map[string]interface{}) (string, map[string]string, error) {
-	u := properties["url"].(string)
-	return strings.Replace(u, "http", "s3web", 1), map[string]string{}, nil
+	u := fmt.Sprintf("ssh://%s", properties["username"])
+	if properties["password"] != nil {
+		u += ":*****"
+	}
+	u += fmt.Sprintf("@%s", properties["address"])
+	if properties["port"] != nil {
+		var port = 0
+		if flt, ok := properties["port"].(float32); ok {
+			port = int(flt)
+		} else if flt, ok := properties["port"].(float64); ok {
+			port = int(flt)
+		} else {
+			port = properties["port"].(int)
+		}
+		u += fmt.Sprintf(":%d", port)
+	}
+	if properties["path"].(string)[0:1] != "/" {
+		u += "/~/"
+	}
+	u += properties["path"].(string)
+
+	retProps := map[string]string{}
+	if properties["keyFile"] != nil {
+		retProps["keyFile"] = properties["keyFile"].(string)
+	}
+
+	return u, retProps, nil
 }
 
 func (s sshRemote) GetParameters(remoteProperties map[string]interface{}) (map[string]interface{}, error) {
