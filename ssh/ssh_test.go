@@ -4,9 +4,15 @@
 package ssh
 
 import (
+	"errors"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/titan-data/remote-sdk-go/remote"
+	"golang.org/x/crypto/ssh/terminal"
+	"io/ioutil"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -95,6 +101,13 @@ func TestBadMissingUsername(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
+func TestBadPort(t *testing.T) {
+	r := remote.Get("ssh")
+	u, _ := url.Parse("ssh://user@host:29348529384572398457932847539/path")
+	_, err := r.FromURL(u, map[string]string{})
+	assert.NotNil(t, err)
+}
+
 func TestBadMissingPath(t *testing.T) {
 	r := remote.Get("ssh")
 	u, _ := url.Parse("ssh://user@host")
@@ -150,6 +163,15 @@ func TestToKeyFile(t *testing.T) {
 	assert.Equal(t, "keyfile", props["keyFile"])
 }
 
+func TestToPortFloat(t *testing.T) {
+	p := float32(812)
+	r := remote.Get("ssh")
+	u, props, _ := r.ToURL(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path", "port": p})
+	assert.Equal(t, "ssh://username@host:812/path", u)
+	assert.Empty(t, props)
+}
+
 func TestToPortDouble(t *testing.T) {
 	r := remote.Get("ssh")
 	u, props, _ := r.ToURL(map[string]interface{}{"username": "username", "address": "host",
@@ -158,34 +180,82 @@ func TestToPortDouble(t *testing.T) {
 	assert.Empty(t, props)
 }
 
+func TestGetParameters(t *testing.T) {
+	r := remote.Get("ssh")
+	props, _ := r.GetParameters(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path", "password": "pass"})
+	assert.Empty(t, props)
+}
 
-/*
+func TestKeyFileParameters(t *testing.T) {
+	r := remote.Get("ssh")
+	file, err := ioutil.TempFile("", "ssh.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(file.Name())
+	path, err := filepath.Abs(file.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
 
-   "get basic SSH get parameters succeeds" {
-       val params = client.getParameters(mapOf("username" to "username", "address" to "host",
-               "path" to "/path", "password" to "pass"))
-       params["password"] shouldBe null
-       params["key"] shouldBe null
-   }
+	err = ioutil.WriteFile(path, []byte("KEY"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-   "get SSH parameters with keyfile succeeds" {
-       val keyFile = createTempFile()
-       try {
-           keyFile.writeText("KEY")
-           val params = client.getParameters(mapOf("username" to "username", "address" to "host",
-                   "path" to "/path", "keyFile" to keyFile.absolutePath))
-           params["password"] shouldBe null
-           params["key"] shouldBe "KEY"
-       } finally {
-           keyFile.delete()
-       }
-   }
+	props, _ := r.GetParameters(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path", "keyFile": path})
+	assert.Nil(t, props["password"])
+	assert.Equal(t, "KEY", props["key"])
+}
 
-   "prompt for SSH password succeeds" {
-       every { console.readPassword(any()) } returns "pass".toCharArray()
-       val params = client.getParameters(mapOf("username" to "username", "address" to "host",
-               "path" to "/path"))
-       params["password"] shouldBe "pass"
-       params["key"] shouldBe null
-   }
-*/
+func TestBadKeyFileParameters(t *testing.T) {
+	r := remote.Get("ssh")
+	file, err := ioutil.TempFile("", "ssh.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := filepath.Abs(file.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(path)
+
+	_, err = r.GetParameters(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path", "keyFile": path})
+	assert.NotNil(t, err)
+}
+
+func TestPasswordPrompt(t *testing.T) {
+	r := remote.Get("ssh")
+	readPassword = func(fd int) (bytes []byte, err error) {
+		return []byte("pass"), nil
+	}
+	fmtPrintf = func(format string, a ...interface{}) (n int, err error) {
+		return 0, nil
+	}
+	props, _ := r.GetParameters(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path"})
+	readPassword = terminal.ReadPassword
+	fmtPrintf = fmt.Printf
+
+	assert.Nil(t, props["key"])
+	assert.Equal(t, "pass", props["password"])
+}
+
+func TestBadPasswordPrompt(t *testing.T) {
+	r := remote.Get("ssh")
+	readPassword = func(fd int) (bytes []byte, err error) {
+		return []byte{}, errors.New("error")
+	}
+	fmtPrintf = func(format string, a ...interface{}) (n int, err error) {
+		return 0, nil
+	}
+	_, err := r.GetParameters(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path"})
+	readPassword = terminal.ReadPassword
+	fmtPrintf = fmt.Printf
+
+	assert.NotNil(t, err)
+}

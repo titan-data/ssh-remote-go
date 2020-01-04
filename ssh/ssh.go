@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/titan-data/remote-sdk-go/remote"
+	"golang.org/x/crypto/ssh/terminal"
+	"io/ioutil"
 	"net/url"
 	"strconv"
 	"strings"
@@ -106,8 +108,30 @@ func (s sshRemote) ToURL(properties map[string]interface{}) (string, map[string]
 	return u, retProps, nil
 }
 
+var readPassword = terminal.ReadPassword
+var fmtPrintf = fmt.Printf
+
 func (s sshRemote) GetParameters(remoteProperties map[string]interface{}) (map[string]interface{}, error) {
-	return map[string]interface{}{}, nil
+	result := map[string]interface{}{}
+
+	if remoteProperties["keyFile"] != nil {
+		content, err := ioutil.ReadFile(remoteProperties["keyFile"].(string))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read key file %s: %w", remoteProperties["keyFile"], err)
+		}
+		result["key"] = string(content)
+	}
+
+	if remoteProperties["password"] == nil && remoteProperties["keyFile"] == nil {
+		fmtPrintf("password: ")
+		pw, err := readPassword(0)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read password: %w", err)
+		}
+		result["password"] = string(pw)
+	}
+
+	return result, nil
 }
 
 func init() {
