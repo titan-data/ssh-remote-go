@@ -1,4 +1,4 @@
-module github.com/titan-data/s3web-remote-go
+module github.com/titan-data/ssh-remote-go
 
 require (
 	github.com/stretchr/testify v1.4.0
