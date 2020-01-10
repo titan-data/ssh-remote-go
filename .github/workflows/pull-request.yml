@@ -18,5 +18,7 @@ jobs:
           go-version: '1.13.5'
       - name: Build
         run: go build -v ./...
+      - name: Build command
+        run: go build -o build/ssh ./cmd/ssh
       - name: Test
         run: go test -v ./...
