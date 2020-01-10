@@ -17,11 +17,16 @@ import (
 type sshRemote struct {
 }
 
-func (s sshRemote) Type() string {
-	return "ssh"
+func (s sshRemote) Type() (string, error) {
+	return "ssh", nil
 }
 
-func (s sshRemote) FromURL(url *url.URL, additionalProperties map[string]string) (map[string]interface{}, error) {
+func (s sshRemote) FromURL(rawUrl string, additionalProperties map[string]string) (map[string]interface{}, error) {
+	url, err := url.Parse(rawUrl)
+	if err != nil {
+		return nil, err
+	}
+
 	if url.Scheme != "ssh" {
 		return nil, errors.New("invalid remote scheme")
 	}

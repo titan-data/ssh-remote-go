@@ -10,7 +10,6 @@ import (
 	"github.com/titan-data/remote-sdk-go/remote"
 	"golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
-	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,13 +17,13 @@ import (
 
 func TestRegistered(t *testing.T) {
 	r := remote.Get("ssh")
-	assert.Equal(t, "ssh", r.Type())
+	ret, _ := r.Type()
+	assert.Equal(t, "ssh", ret)
 }
 
 func TestFromURL(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh://user:pass@host:8022/path")
-	props, _ := r.FromURL(u, map[string]string{})
+	props, _ := r.FromURL("ssh://user:pass@host:8022/path", map[string]string{})
 	assert.Equal(t, "user", props["username"])
 	assert.Equal(t, "pass", props["password"])
 	assert.Equal(t, "host", props["address"])
@@ -35,8 +34,7 @@ func TestFromURL(t *testing.T) {
 
 func TestSimple(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh://user@host/path")
-	props, _ := r.FromURL(u, map[string]string{})
+	props, _ := r.FromURL("ssh://user@host/path", map[string]string{})
 	assert.Equal(t, "user", props["username"])
 	assert.Nil(t, props["password"])
 	assert.Equal(t, "host", props["address"])
@@ -47,78 +45,67 @@ func TestSimple(t *testing.T) {
 
 func TestKeyFile(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh://user@host/path")
-	props, _ := r.FromURL(u, map[string]string{"keyFile": "~/.ssh/id_dsa"})
+	props, _ := r.FromURL("ssh://user@host/path", map[string]string{"keyFile": "~/.ssh/id_dsa"})
 	assert.Equal(t, "~/.ssh/id_dsa", props["keyFile"])
 }
 
 func TestRelativePath(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh://user@host/~/relative/path")
-	props, _ := r.FromURL(u, map[string]string{})
+	props, _ := r.FromURL("ssh://user@host/~/relative/path", map[string]string{})
 	assert.Equal(t, "relative/path", props["path"])
 }
 
 func TestBadScheme(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("foo://user:pass@host:8022/path")
-	_, err := r.FromURL(u, map[string]string{})
+	_, err := r.FromURL("foo://user:pass@host:8022/path", map[string]string{})
 	assert.NotNil(t, err)
 }
 
 func TestBadPasswordAndKeyFile(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh://user:password@host/path")
-	_, err := r.FromURL(u, map[string]string{"keyFile": "~/.ssh/id_dsa"})
+	_, err := r.FromURL("ssh://user:password@host/path", map[string]string{"keyFile": "~/.ssh/id_dsa"})
 	assert.NotNil(t, err)
 }
 
 func TestBadProperty(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh://user@host/path")
-	_, err := r.FromURL(u, map[string]string{"foo": "bar"})
+	_, err := r.FromURL("ssh://user@host/path", map[string]string{"foo": "bar"})
 	assert.NotNil(t, err)
 }
 
 func TestBadMissingHost(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh:///path")
-	_, err := r.FromURL(u, map[string]string{})
+	_, err := r.FromURL("ssh:///path", map[string]string{})
 	assert.NotNil(t, err)
 }
 
 func TestBadSchemeOnly(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh")
-	_, err := r.FromURL(u, map[string]string{})
+	_, err := r.FromURL("ssh", map[string]string{})
 	assert.NotNil(t, err)
 }
 
 func TestBadMissingUsername(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh://host/path")
-	_, err := r.FromURL(u, map[string]string{})
+	_, err := r.FromURL("ssh://host/path", map[string]string{})
 	assert.NotNil(t, err)
 }
 
 func TestBadPort(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh://user@host:29348529384572398457932847539/path")
-	_, err := r.FromURL(u, map[string]string{})
+	_, err := r.FromURL("ssh://user@host:29348529384572398457932847539/path", map[string]string{})
 	assert.NotNil(t, err)
 }
 
 func TestBadMissingPath(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh://user@host")
-	_, err := r.FromURL(u, map[string]string{})
+	_, err := r.FromURL("ssh://user@host", map[string]string{})
 	assert.NotNil(t, err)
 }
 
 func TestBadMissingHostWithUser(t *testing.T) {
 	r := remote.Get("ssh")
-	u, _ := url.Parse("ssh://user@/path")
-	_, err := r.FromURL(u, map[string]string{})
+	_, err := r.FromURL("ssh://user@/path", map[string]string{})
 	assert.NotNil(t, err)
 }
 
