@@ -139,6 +139,22 @@ func (s sshRemote) GetParameters(remoteProperties map[string]interface{}) (map[s
 	return result, nil
 }
 
+func (s sshRemote) ValidateRemote(properties map[string]interface{}) error {
+	panic("implement me")
+}
+
+func (s sshRemote) ValidateParameters(parameters map[string]interface{}) error {
+	panic("implement me")
+}
+
+func (s sshRemote) ListCommits(properties map[string]interface{}, parameters map[string]interface{}, tags []remote.Tag) ([]remote.Commit, error) {
+	panic("implement me")
+}
+
+func (s sshRemote) GetCommit(properties map[string]interface{}, parameters map[string]interface{}, commitId string) (*remote.Commit, error) {
+	panic("implement me")
+}
+
 func init() {
 	remote.Register(sshRemote{})
 }
