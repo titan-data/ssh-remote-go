@@ -140,11 +140,30 @@ func (s sshRemote) GetParameters(remoteProperties map[string]interface{}) (map[s
 }
 
 func (s sshRemote) ValidateRemote(properties map[string]interface{}) error {
-	panic("implement me")
+	err := remote.ValidateFields(properties, []string{"username", "address", "path"}, []string{"password", "port", "keyFile"})
+	if err != nil {
+		return err
+	}
+	if port, ok := properties["port"]; ok {
+		portval := 0
+		if p, ok := port.(int); ok {
+			portval = p
+		}
+		if p, ok := port.(float32); ok {
+			portval = int(p)
+		}
+		if p, ok := port.(float64); ok {
+			portval = int(p)
+		}
+		if portval <= 0 || portval > 65535 {
+			return errors.New("invalid port")
+		}
+	}
+	return nil
 }
 
 func (s sshRemote) ValidateParameters(parameters map[string]interface{}) error {
-	panic("implement me")
+	return remote.ValidateFields(parameters, []string{}, []string{"password", "key"})
 }
 
 func (s sshRemote) ListCommits(properties map[string]interface{}, parameters map[string]interface{}, tags []remote.Tag) ([]remote.Commit, error) {

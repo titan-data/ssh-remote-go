@@ -281,3 +281,76 @@ func TestBadPasswordPrompt(t *testing.T) {
 
 	assert.Error(t, err)
 }
+
+func TestValidateRemoteRequiredOnly(t *testing.T) {
+	r := remote.Get("ssh")
+	err := r.ValidateRemote(map[string]interface{}{"username": "username", "address": "host", "path": "/path"})
+	assert.NoError(t, err)
+}
+
+func TestValidateRemoteAllOptional(t *testing.T) {
+	r := remote.Get("ssh")
+	err := r.ValidateRemote(map[string]interface{}{"username": "username", "address": "host", "path": "/path",
+		"keyFile": "/keyfile", "password": "password", "port": 8022})
+	assert.NoError(t, err)
+}
+
+func TestValidateRemoteBadPort(t *testing.T) {
+	r := remote.Get("ssh")
+	err := r.ValidateRemote(map[string]interface{}{"username": "username", "address": "host", "path": "/path",
+		"keyFile": "/keyfile", "password": "password", "port": "foo"})
+	assert.Error(t, err)
+}
+
+func TestValidateRemoteBadPortNegative(t *testing.T) {
+	r := remote.Get("ssh")
+	err := r.ValidateRemote(map[string]interface{}{"username": "username", "address": "host", "path": "/path",
+		"keyFile": "/keyfile", "password": "password", "port": -1})
+	assert.Error(t, err)
+}
+
+func TestValidateRemotePortFloat(t *testing.T) {
+	r := remote.Get("ssh")
+	err := r.ValidateRemote(map[string]interface{}{"username": "username", "address": "host", "path": "/path",
+		"keyFile": "/keyfile", "password": "password", "port": 22.0})
+	assert.NoError(t, err)
+}
+
+func TestValidateRemotePortFloat32(t *testing.T) {
+	r := remote.Get("ssh")
+	var p float32 = 22.0
+	err := r.ValidateRemote(map[string]interface{}{"username": "username", "address": "host", "path": "/path",
+		"keyFile": "/keyfile", "password": "password", "port": p})
+	assert.NoError(t, err)
+}
+
+func TestValidateRemoteMissingRequired(t *testing.T) {
+	r := remote.Get("ssh")
+	err := r.ValidateRemote(map[string]interface{}{"username": "username", "address": "host"})
+	assert.Error(t, err)
+}
+
+func TestValidateRemoteExtraProperty(t *testing.T) {
+	r := remote.Get("ssh")
+	err := r.ValidateRemote(map[string]interface{}{"username": "username", "address": "host", "path": "/path",
+		"foo": "bar"})
+	assert.Error(t, err)
+}
+
+func TestValidateParametersEmpty(t *testing.T) {
+	r := remote.Get("ssh")
+	err := r.ValidateParameters(map[string]interface{}{})
+	assert.NoError(t, err)
+}
+
+func TestValidateParametersAllOptional(t *testing.T) {
+	r := remote.Get("ssh")
+	err := r.ValidateParameters(map[string]interface{}{"key": "key", "password": "password"})
+	assert.NoError(t, err)
+}
+
+func TestValidateParametersUnknown(t *testing.T) {
+	r := remote.Get("ssh")
+	err := r.ValidateParameters(map[string]interface{}{"foo": "bar"})
+	assert.Error(t, err)
+}
