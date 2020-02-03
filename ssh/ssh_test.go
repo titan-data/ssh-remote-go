@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/titan-data/remote-sdk-go/remote"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
 	"os"
@@ -147,6 +148,13 @@ func TestToPort(t *testing.T) {
 		assert.Equal(t, "ssh://username@host:812/path", u)
 		assert.Empty(t, props)
 	}
+}
+
+func TestToBadPort(t *testing.T) {
+	r := remote.Get("ssh")
+	_, _, err := r.ToURL(map[string]interface{}{"username": "username", "address": "host",
+		"path": "/path", "port": "812"})
+	assert.Error(t, err)
 }
 
 func TestToRelativePath(t *testing.T) {
@@ -353,4 +361,118 @@ func TestValidateParametersUnknown(t *testing.T) {
 	r := remote.Get("ssh")
 	err := r.ValidateParameters(map[string]interface{}{"foo": "bar"})
 	assert.Error(t, err)
+}
+
+func TestGetAuthBoth(t *testing.T) {
+	_, _, err := getAuth(map[string]interface{}{"password": "password"}, map[string]interface{}{"password": "password",
+		"key": "key"})
+	assert.Error(t, err)
+}
+
+func TestGetAuthKey(t *testing.T) {
+	pass, key, err := getAuth(map[string]interface{}{"password": "password"}, map[string]interface{}{"key": "key"})
+	assert.NoError(t, err)
+	assert.Empty(t, pass)
+	assert.NotEmpty(t, key)
+}
+
+func TestGetAuthParamPassword(t *testing.T) {
+	pass, key, err := getAuth(map[string]interface{}{"password": "one"}, map[string]interface{}{"password": "two"})
+	assert.NoError(t, err)
+	assert.Equal(t, "two", pass)
+	assert.Empty(t, key)
+}
+
+func TestGetAuthRemotePassword(t *testing.T) {
+	pass, key, err := getAuth(map[string]interface{}{"password": "one"}, map[string]interface{}{})
+	assert.NoError(t, err)
+	assert.Equal(t, "one", pass)
+	assert.Empty(t, key)
+}
+
+func TestGetAuthMissing(t *testing.T) {
+	_, _, err := getAuth(map[string]interface{}{}, map[string]interface{}{})
+	assert.Error(t, err)
+}
+
+func TestGetConnBadAuth(t *testing.T) {
+	dial = func(network string, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+		return nil, nil
+	}
+	_, err := getConnection(map[string]interface{}{}, map[string]interface{}{})
+	dial = ssh.Dial
+	assert.Error(t, err)
+}
+
+func TestGetConnPassword(t *testing.T) {
+	host := ""
+	var config *ssh.ClientConfig = nil
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		host = addr
+		config = cfg
+		return nil, nil
+	}
+	_, err := getConnection(map[string]interface{}{"username": "username", "address": "address"},
+		map[string]interface{}{"password": "password"})
+	if assert.NoError(t, err) {
+		assert.Equal(t, "address", host)
+		assert.Equal(t, "username", config.User)
+	}
+	dial = ssh.Dial
+}
+
+func TestGetConnKey(t *testing.T) {
+	key := `
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEAsXU8SiL4eLBupbLEF9XAy+60Dr5+TPSUm8c27WCUfYOF5Yly
+DWZcTS86coEGjgfqDFM6o3wXgadugt/XYi7M2k0QVsmX1577088/SixrNnX8HQyX
+f3S4tLGDLX/d48A2Xi6FmJUpHqyPzKzVU1THQPOKoxZUV4qZmbRrR0FO8WmZMQTl
+KNNopq4fvEPZw0oNPONS8e28zvCu0qqka06+mB5pIc5+OhXoQK4xPgPr/gW5Cruv
+R5IgBt4gdLMSpBp2JB3hFj6U0c+7wmGaZYt5R92/b8tetn/jMhIt7720mJJPfq1d
+1W1UpERZjUTMvFzNBLdCtgT59qxqL+Tv4QA6AQIDAQABAoIBAE7EvQgjUaswlUyT
+dxslVDixMddBkwpRng0vdiATuJWl5a8nPSrZfqr8BbOBtgkhVjA2WVbr4/s2+IS7
+Gv2HzIIxpsj/HpklBp7T5UHlSYmZAVlbl3uJsdry2Ek/8pv/W6Kef8pkmyX0brfp
+F5+vh+o6sBUH+lQJP3jMbrnoMURSX9jFSPg/+J1zb1Nf/SulBro4+Pb4t+i97FUk
+mWqMI1jvCkAnQJ0oYQ9CeYBJjvXeENyN7HQ+RM6OEdsHi64EMfJCwrZGMAHIo2Ty
+87AQhgoHEKfNC+XotnkPaKmS5qaP2ggPe2Ol63k3FbR6VHlqJny0VR48pbzyQyr2
+feENXWECgYEA2naSDRVCwiAdZAIvMa0cDjpwOYIfLJelc0hljCOaLQeye2oT+hAQ
+pCVO7+maD4VbZ1Xmc70LGFSWktVlByJU9UOBY5rq7DTgXoEMoOtf2uUcJupnLLix
+we7Fn9TFaM3RWKbbg3G0OjucepB7yVZ2qSVDGPQ8Bl/IKq2hfKsqy3UCgYEAz/L9
+PU0gzxmZlF1rea1d3clNoounW/J1qHXl2nT11RaIzPhct1fKde/wIt/D7gqwI3ba
+wBJhNv/a4kDvnJwV3iyEKFs7qqeqaZ1KsLCkaQ0erdhl8LzfE25MWKlTthqjY9yT
+f8ohD0r57y8NVInwfXhBKIUZr3qXBA+d0krfft0CgYACgbnLTKMndxbfPucrusDH
+qQQApO2WpWbQm9QOd5odSilSITV5eRW3zHXLavLJms4hsWqjiVfHP7E6nhg6rLos
+1kl1yyFG9JRegTyT3B+Nc3OPPsFQUg44G3VJEDfzq+jrC38ZUwSuZmC1R1MkTEmw
+Ry0t7B+EMzUoyDVCKPSkwQKBgQC+roMWdiYSodfZWzyVK6r6F4AP/90sDA1ltw5Z
+HozZo7s3sLpcCK2HLchWQjfIjJZtPqxiGbh5FW3hsEfHpLzMqKda1iXFW8+A3xHB
+KYjpJ3WtVdRMRvSLPcXWOxae0phmlrnOIUvlWQwMDmo7zezvMJkXDc26wj++Io/G
+aI++JQKBgQDYBW6xXOYHFbCazz7euPRXaV0BX9Pt+ylrQvqDWwa6fk9FDGOrhRW8
+1ywiam3Z+Nup2JNE8PjwP0qQisLbzAbG60HMg2Yx0C6yclIZLUDEwmrjmBVCiP81
+qXdXtd+SfLRrfCd1KJRp8NFIPFsk0T3iy8hxZJZSHtM6/nwM3p2rHw==
+-----END RSA PRIVATE KEY-----`
+	host := ""
+	var config *ssh.ClientConfig = nil
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		host = addr
+		config = cfg
+		return nil, nil
+	}
+	_, err := getConnection(map[string]interface{}{"username": "username", "address": "address"},
+		map[string]interface{}{"key": key})
+	if assert.NoError(t, err) {
+		assert.Equal(t, "address", host)
+		assert.Equal(t, "username", config.User)
+	}
+	dial = ssh.Dial
+}
+
+func TestGetConnBadKey(t *testing.T) {
+	key := "notakey"
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		return nil, nil
+	}
+	_, err := getConnection(map[string]interface{}{"username": "username", "address": "address"},
+		map[string]interface{}{"key": key})
+	assert.Error(t, err)
+	dial = ssh.Dial
 }

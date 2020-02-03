@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/titan-data/remote-sdk-go/remote"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
 	"net/url"
@@ -83,22 +84,35 @@ func (s sshRemote) FromURL(rawUrl string, additionalProperties map[string]string
 	return result, nil
 }
 
+func getPort(port interface{}) (int, error) {
+	portval := 0
+	if p, ok := port.(int); ok {
+		portval = p
+	}
+	if p, ok := port.(float32); ok {
+		portval = int(p)
+	}
+	if p, ok := port.(float64); ok {
+		portval = int(p)
+	}
+	if portval <= 0 || portval > 65535 {
+		return 0, errors.New("invalid port")
+	}
+	return portval, nil
+}
+
 func (s sshRemote) ToURL(properties map[string]interface{}) (string, map[string]string, error) {
 	u := fmt.Sprintf("ssh://%s", properties["username"])
 	if properties["password"] != nil {
 		u += ":*****"
 	}
 	u += fmt.Sprintf("@%s", properties["address"])
-	if properties["port"] != nil {
-		var port = 0
-		if flt, ok := properties["port"].(float32); ok {
-			port = int(flt)
-		} else if flt, ok := properties["port"].(float64); ok {
-			port = int(flt)
-		} else {
-			port = properties["port"].(int)
+	if port, ok := properties["port"]; ok {
+		portval, err := getPort(port)
+		if err != nil {
+			return "", nil, err
 		}
-		u += fmt.Sprintf(":%d", port)
+		u += fmt.Sprintf(":%d", portval)
 	}
 	if properties["path"].(string)[0:1] != "/" {
 		u += "/~/"
@@ -145,25 +159,63 @@ func (s sshRemote) ValidateRemote(properties map[string]interface{}) error {
 		return err
 	}
 	if port, ok := properties["port"]; ok {
-		portval := 0
-		if p, ok := port.(int); ok {
-			portval = p
-		}
-		if p, ok := port.(float32); ok {
-			portval = int(p)
-		}
-		if p, ok := port.(float64); ok {
-			portval = int(p)
-		}
-		if portval <= 0 || portval > 65535 {
-			return errors.New("invalid port")
-		}
+		_, err := getPort(port)
+		return err
 	}
 	return nil
 }
 
 func (s sshRemote) ValidateParameters(parameters map[string]interface{}) error {
 	return remote.ValidateFields(parameters, []string{}, []string{"password", "key"})
+}
+
+/*
+ * This method will parse the remote configuration and parameters to determine if we should use password
+ * authentication or key-based authentication. It returns a pair where exactly one element must be set, either
+ * the first (password) or second (key).
+ */
+func getAuth(properties map[string]interface{}, parameters map[string]interface{}) (string, string, error) {
+	paramsPassword, paramsPasswordOk := parameters["password"]
+	paramsKey, paramsKeyOk := parameters["key"]
+	remotePassword, remotePasswordOk := properties["password"]
+	if paramsPasswordOk && paramsKeyOk {
+		return "", "", errors.New("only one of password or key can be specified")
+	}
+	if paramsKeyOk {
+		return "", paramsKey.(string), nil
+	}
+	if paramsPasswordOk {
+		return paramsPassword.(string), "", nil
+	}
+	if remotePasswordOk {
+		return remotePassword.(string), "", nil
+	}
+	return "", "", errors.New("one of password or key must be specified")
+}
+
+var dial = ssh.Dial
+
+func getConnection(properties map[string]interface{}, parameters map[string]interface{}) (*ssh.Client, error) {
+	password, key, err := getAuth(properties, parameters)
+	if err != nil {
+		return nil, err
+	}
+	config := &ssh.ClientConfig{
+		User:            properties["username"].(string),
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+
+	if key != "" {
+		parsed, err := ssh.ParsePrivateKey([]byte(key))
+		if err != nil {
+			return nil, err
+		}
+		config.Auth = []ssh.AuthMethod{ssh.PublicKeys(parsed)}
+	} else {
+		config.Auth = []ssh.AuthMethod{ssh.Password(password)}
+	}
+
+	return dial("tcp", properties["address"].(string), config)
 }
 
 func (s sshRemote) ListCommits(properties map[string]interface{}, parameters map[string]interface{}, tags []remote.Tag) ([]remote.Commit, error) {
