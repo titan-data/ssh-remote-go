@@ -4,6 +4,8 @@
 package ssh
 
 import (
+	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/titan-data/remote-sdk-go/remote"
@@ -218,12 +220,72 @@ func getConnection(properties map[string]interface{}, parameters map[string]inte
 	return dial("tcp", properties["address"].(string), config)
 }
 
+func runCommand(conn *ssh.Client, command string) ([]byte, error) {
+	sess, err := conn.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	defer sess.Close()
+
+	output, err := sess.CombinedOutput(command)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute '%s': %w\n%s", command, err, string(output))
+	}
+	return output, nil
+}
+
+var run = runCommand
+
+func readCommit(conn *ssh.Client, properties map[string]interface{}, commitId string) (*remote.Commit, error) {
+	output, err := run(conn, fmt.Sprintf("cat \"%s/%s/metadata.json\"", properties["path"], commitId))
+	if err != nil {
+		return nil, err
+	}
+
+	commit := map[string]interface{}{}
+	err = json.Unmarshal(output, &commit)
+	if err != nil {
+		return nil, err
+	}
+
+	return &remote.Commit{Id: commitId, Properties: commit}, nil
+}
+
 func (s sshRemote) ListCommits(properties map[string]interface{}, parameters map[string]interface{}, tags []remote.Tag) ([]remote.Commit, error) {
-	panic("implement me")
+	conn, err := getConnection(properties, parameters)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	output, err := run(conn, fmt.Sprintf("ls -1 \"%s\"", properties["path"]))
+	if err != nil {
+		return nil, err
+	}
+
+	var ret []remote.Commit
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		commitId := strings.TrimSpace(scanner.Text())
+		commit, err := readCommit(conn, properties, commitId)
+		if err == nil && remote.MatchTags(commit.Properties, tags) {
+			ret = append(ret, remote.Commit{Id: commit.Id, Properties: commit.Properties})
+		}
+	}
+
+	remote.SortCommits(ret)
+
+	return ret, nil
 }
 
 func (s sshRemote) GetCommit(properties map[string]interface{}, parameters map[string]interface{}, commitId string) (*remote.Commit, error) {
-	panic("implement me")
+	conn, err := getConnection(properties, parameters)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	return readCommit(conn, properties, commitId)
 }
 
 func init() {

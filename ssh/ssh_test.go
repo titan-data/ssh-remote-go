@@ -66,6 +66,12 @@ func TestRelativePath(t *testing.T) {
 	}
 }
 
+func TestBadUrl(t *testing.T) {
+	r := remote.Get("ssh")
+	_, err := r.FromURL("ssh://host\nname", map[string]string{})
+	assert.Error(t, err)
+}
+
 func TestBadScheme(t *testing.T) {
 	r := remote.Get("ssh")
 	_, err := r.FromURL("foo://user:pass@host:8022/path", map[string]string{})
@@ -474,5 +480,166 @@ func TestGetConnBadKey(t *testing.T) {
 	_, err := getConnection(map[string]interface{}{"username": "username", "address": "address"},
 		map[string]interface{}{"key": key})
 	assert.Error(t, err)
+	dial = ssh.Dial
+}
+
+func TestGetCommit(t *testing.T) {
+	remoteCommand := ""
+	conn := new(MockConn)
+	conn.On("Close").Return(nil)
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		return &ssh.Client{Conn: conn}, nil
+	}
+	run = func(conn *ssh.Client, command string) (bytes []byte, err error) {
+		remoteCommand = command
+		return []byte("{\"a\": \"b\", \"c\": {\"d\": \"e\"}}"), nil
+	}
+	r := remote.Get("ssh")
+	commit, err := r.GetCommit(map[string]interface{}{"username": "username", "address": "address", "path": "/path"},
+		map[string]interface{}{"password": "password"}, "id")
+	if assert.NoError(t, err) {
+		assert.Equal(t, "cat \"/path/id/metadata.json\"", remoteCommand)
+		assert.Equal(t, "id", commit.Id)
+		assert.Equal(t, "b", commit.Properties["a"])
+		props := commit.Properties["c"].(map[string]interface{})
+		assert.Equal(t, "e", props["d"])
+	}
+
+	run = runCommand
+	dial = ssh.Dial
+}
+
+func TestGetCommitBadJson(t *testing.T) {
+	conn := new(MockConn)
+	conn.On("Close").Return(nil)
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		return &ssh.Client{Conn: conn}, nil
+	}
+	run = func(conn *ssh.Client, command string) (bytes []byte, err error) {
+		return []byte("foo"), nil
+	}
+	r := remote.Get("ssh")
+	_, err := r.GetCommit(map[string]interface{}{"username": "username", "address": "address", "path": "/path"},
+		map[string]interface{}{"password": "password"}, "id")
+	assert.Error(t, err)
+
+	run = runCommand
+	dial = ssh.Dial
+}
+
+func TestGetCommitRunFail(t *testing.T) {
+	conn := new(MockConn)
+	conn.On("Close").Return(nil)
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		return &ssh.Client{Conn: conn}, nil
+	}
+	run = func(conn *ssh.Client, command string) (bytes []byte, err error) {
+		return nil, errors.New("error")
+	}
+	r := remote.Get("ssh")
+	_, err := r.GetCommit(map[string]interface{}{"username": "username", "address": "address", "path": "/path"},
+		map[string]interface{}{"password": "password"}, "id")
+	assert.Error(t, err)
+
+	run = runCommand
+	dial = ssh.Dial
+}
+
+func TestGetCommitBadConn(t *testing.T) {
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		return nil, errors.New("error")
+	}
+	r := remote.Get("ssh")
+	_, err := r.GetCommit(map[string]interface{}{"username": "username", "address": "address", "path": "/path"},
+		map[string]interface{}{"password": "password"}, "id")
+	assert.Error(t, err)
+	dial = ssh.Dial
+}
+
+func TestListCommitsBadConn(t *testing.T) {
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		return nil, errors.New("error")
+	}
+	r := remote.Get("ssh")
+	_, err := r.ListCommits(map[string]interface{}{"username": "username", "address": "address", "path": "/path"},
+		map[string]interface{}{"password": "password"}, []remote.Tag{})
+	assert.Error(t, err)
+	dial = ssh.Dial
+}
+
+func TestListCommitsRunFail(t *testing.T) {
+	conn := new(MockConn)
+	conn.On("Close").Return(nil)
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		return &ssh.Client{Conn: conn}, nil
+	}
+	run = func(conn *ssh.Client, command string) (bytes []byte, err error) {
+		return nil, errors.New("error")
+	}
+	r := remote.Get("ssh")
+	_, err := r.ListCommits(map[string]interface{}{"username": "username", "address": "address", "path": "/path"},
+		map[string]interface{}{"password": "password"}, []remote.Tag{})
+	assert.Error(t, err)
+
+	run = runCommand
+	dial = ssh.Dial
+}
+
+func TestListCommits(t *testing.T) {
+	conn := new(MockConn)
+	conn.On("Close").Return(nil)
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		return &ssh.Client{Conn: conn}, nil
+	}
+	run = func(conn *ssh.Client, command string) (bytes []byte, err error) {
+		if command == "ls -1 \"/path\"" {
+			return []byte("one\ntwo\n"), nil
+		}
+		if command == "cat \"/path/one/metadata.json\"" {
+			return []byte("{\"timestamp\": \"2019-09-20T13:45:36Z\"}"), nil
+		}
+		if command == "cat \"/path/two/metadata.json\"" {
+			return []byte("{\"timestamp\": \"2019-09-20T13:45:37Z\"}"), nil
+		}
+		return nil, errors.New("error")
+	}
+	r := remote.Get("ssh")
+	commits, err := r.ListCommits(map[string]interface{}{"username": "username", "address": "address", "path": "/path"},
+		map[string]interface{}{"password": "password"}, []remote.Tag{})
+	if assert.NoError(t, err) {
+		assert.Len(t, commits, 2)
+		assert.Equal(t, "two", commits[0].Id)
+		assert.Equal(t, "one", commits[1].Id)
+	}
+	run = runCommand
+	dial = ssh.Dial
+}
+
+func TestListCommitsTags(t *testing.T) {
+	conn := new(MockConn)
+	conn.On("Close").Return(nil)
+	dial = func(network string, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+		return &ssh.Client{Conn: conn}, nil
+	}
+	run = func(conn *ssh.Client, command string) (bytes []byte, err error) {
+		if command == "ls -1 \"/path\"" {
+			return []byte("one\ntwo\n"), nil
+		}
+		if command == "cat \"/path/one/metadata.json\"" {
+			return []byte("{\"timestamp\": \"2019-09-20T13:45:36Z\", \"tags\": {\"a\": \"b\"}}"), nil
+		}
+		if command == "cat \"/path/two/metadata.json\"" {
+			return []byte("{\"timestamp\": \"2019-09-20T13:45:37Z\", \"tags\": {\"c\": \"d\"}}"), nil
+		}
+		return nil, errors.New("error")
+	}
+	r := remote.Get("ssh")
+	commits, err := r.ListCommits(map[string]interface{}{"username": "username", "address": "address", "path": "/path"},
+		map[string]interface{}{"password": "password"}, []remote.Tag{{Key: "a"}})
+	if assert.NoError(t, err) {
+		assert.Len(t, commits, 1)
+		assert.Equal(t, "one", commits[0].Id)
+	}
+	run = runCommand
 	dial = ssh.Dial
 }
